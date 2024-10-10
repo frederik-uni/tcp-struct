@@ -88,7 +88,7 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
         }
 
         impl tcp_share::Receiver<#name> for #writer_service_name_str {
-            fn request(func: String, data: Vec<u8>, app_data: std::sync::Arc<tokio::sync::Mutex<MyStruct>>) -> std::pin::Pin<Box<dyn std::future::Future<Output = tcp_share::Result<Vec<u8>>> + Send>> {
+            fn request(func: String, data: Vec<u8>, app_data: std::sync::Arc<tokio::sync::Mutex<#name>>) -> std::pin::Pin<Box<dyn std::future::Future<Output = tcp_share::Result<Vec<u8>>> + Send>> {
                 Box::pin(async move {
                 match func.as_str() {
                     #(#cases)*
@@ -96,7 +96,7 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
                 }
                 })
             }
-            fn get_app_data(&self) -> std::sync::Arc<tokio::sync::Mutex<MyStruct>> {
+            fn get_app_data(&self) -> std::sync::Arc<tokio::sync::Mutex<#name>> {
                 self.data.clone()
             }
         }
