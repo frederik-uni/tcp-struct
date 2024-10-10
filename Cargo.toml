@@ -1,0 +1,6 @@
+[workspace]
+
+members = [ "crates/macros","crates/tcp-share"]
+
+[workspace.dependencies]
+macros = {path = "crates/macros"}
