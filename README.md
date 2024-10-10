@@ -1,4 +1,4 @@
-# TCP-Share
+# TCP-Struct
 ### Access structs over TCP with 2 lines of code
 
 ### Features
