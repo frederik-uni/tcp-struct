@@ -1,6 +1,6 @@
 mod util;
 
-use std::{fmt::format, future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, io, pin::Pin, sync::Arc};
 
 pub use macros::{register_impl, TCPShare};
 use serde::{de::DeserializeOwned, Serialize};
@@ -29,6 +29,7 @@ pub enum Error {
     StreamError(#[from] std::io::Error),
     #[error("todo: remove later")]
     Custom(String),
+    #[error("does not match struct")]
     ApiMisMatch(String),
 }
 
@@ -99,7 +100,10 @@ pub fn send_data(port: u16, magic_header: &str, func: &str, data: Vec<u8>) -> Re
 }
 
 #[cfg(feature = "async-tcp")]
-async fn receive_data(stream: &mut TcpStream) -> Result<(String, Vec<u8>)> {
+async fn receive_data(
+    stream: &mut TcpStream,
+    magic_header_server: &str,
+) -> Result<(String, Vec<u8>)> {
     let mut length_bytes = [0; 4];
     stream.read_exact(&mut length_bytes).await?;
 
@@ -109,11 +113,18 @@ async fn receive_data(stream: &mut TcpStream) -> Result<(String, Vec<u8>)> {
     stream.read_exact(&mut buffer).await?;
 
     let mut buffer: &[u8] = &buffer;
-    let version = take_str(&mut buffer)?;
+    let magic_header_client = take_str(&mut buffer)?;
+    if magic_header_client != magic_header_server {
+        return Err(Error::ApiMisMatch(format!(
+            "failed to match magic header, expected: {}, got: {}",
+            magic_header_server, magic_header_client
+        )));
+    }
     let fn_name = take_str(&mut buffer)?;
     Ok((fn_name, buffer.to_vec()))
 }
 
+#[cfg(not(feature = "async-tcp"))]
 fn receive_data(stream: &mut TcpStream, magic_header_server: &str) -> Result<(String, Vec<u8>)> {
     let mut length_bytes = [0; 4];
     stream.read_exact(&mut length_bytes)?;
@@ -124,10 +135,10 @@ fn receive_data(stream: &mut TcpStream, magic_header_server: &str) -> Result<(St
 
     let mut buffer: &[u8] = &buffer;
     let magic_header_client = take_str(&mut buffer)?;
-    if magic_header_client != magic_header {
+    if magic_header_client != magic_header_server {
         return Err(Error::ApiMisMatch(format!(
             "failed to match magic header, expected: {}, got: {}",
-            magic_header, magic_header_client
+            magic_header_server, magic_header_client
         )));
     }
     let fn_name = take_str(&mut buffer)?;
@@ -143,7 +154,7 @@ async fn handle_client<T>(
     app_data: Arc<Mutex<T>>,
 ) {
     #[cfg(feature = "async-tcp")]
-    let data = receive_data(&mut stream).await;
+    let data = receive_data(&mut stream, magic_header).await;
     #[cfg(not(feature = "async-tcp"))]
     let data = receive_data(&mut stream, magic_header);
     let (func, data) = match data {
@@ -189,13 +200,11 @@ pub trait Receiver<T: Send + 'static> {
     fn get_app_data(&self) -> Arc<Mutex<T>>;
 
     #[allow(async_fn_in_trait)]
-    async fn start(&self, port: u16, magic_header: &str) {
+    async fn start(&self, port: u16, magic_header: &str) -> io::Result<()> {
         #[cfg(feature = "async-tcp")]
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
-            .await
-            .unwrap();
+        let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
         #[cfg(not(feature = "async-tcp"))]
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
+        let listener = TcpListener::bind(format!("127.0.0.1:{}", port))?;
         let thread_count = 8;
 
         let futures = Arc::new(Mutex::new(vec![]));
