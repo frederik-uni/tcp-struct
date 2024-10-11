@@ -106,7 +106,7 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
         }
 
         impl #name {
-            pub async fn start(self, port: u16) {
+            pub async fn start(self, port: u16) -> std::io::Result<()> {
                 use tcp_struct::Receiver as _;
                 #writer_service_name_str {
                     data: std::sync::Arc::new(tokio::sync::Mutex::new(self)),
