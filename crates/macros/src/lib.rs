@@ -52,11 +52,11 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
                     match r_type {
                         Some(r_type) => {
                             let r_type: proc_macro2::TokenStream = r_type.parse().unwrap();
-                            quote! {pub async fn #name(&self, #(#args),*) -> Result<#r_type, tcp_share::Error>{
+                            quote! {pub async fn #name(&self, #(#args),*) -> Result<#r_type, tcp_struct::Error>{
                                 #data
                             }}
                         }
-                        None => quote! {pub async fn #name(&self, #(#args),*) -> Result<(), tcp_share::Error>{
+                        None => quote! {pub async fn #name(&self, #(#args),*) -> Result<(), tcp_struct::Error>{
                             #data
                         }},
                     }
@@ -64,11 +64,11 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
                     match r_type {
                         Some(r_type) => {
                             let r_type: proc_macro2::TokenStream = r_type.parse().unwrap();
-                            quote! {pub fn #name(&self, #(#args),*) -> Result<#r_type, tcp_share::Error>{
+                            quote! {pub fn #name(&self, #(#args),*) -> Result<#r_type, tcp_struct::Error>{
                                 #data
                             }}
                         }
-                        None => quote! {pub fn #name(&self, #(#args),*) -> Result<(), tcp_share::Error>{
+                        None => quote! {pub fn #name(&self, #(#args),*) -> Result<(), tcp_struct::Error>{
                             #data
                         }},
                     }
@@ -87,12 +87,12 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
             port: u16
         }
 
-        impl tcp_share::Receiver<#name> for #writer_service_name_str {
-            fn request(func: String, data: Vec<u8>, app_data: std::sync::Arc<tokio::sync::Mutex<#name>>) -> std::pin::Pin<Box<dyn std::future::Future<Output = tcp_share::Result<Vec<u8>>> + Send>> {
+        impl tcp_struct::Receiver<#name> for #writer_service_name_str {
+            fn request(func: String, data: Vec<u8>, app_data: std::sync::Arc<tokio::sync::Mutex<#name>>) -> std::pin::Pin<Box<dyn std::future::Future<Output = tcp_struct::Result<Vec<u8>>> + Send>> {
                 Box::pin(async move {
                 match func.as_str() {
                     #(#cases)*
-                    _ => Err(tcp_share::Error::FunctionNotFound)
+                    _ => Err(tcp_struct::Error::FunctionNotFound)
                 }
                 })
             }
@@ -107,7 +107,7 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
 
         impl #name {
             pub async fn start(self, port: u16) {
-                use tcp_share::Receiver as _;
+                use tcp_struct::Receiver as _;
                 #writer_service_name_str {
                     data: std::sync::Arc::new(tokio::sync::Mutex::new(self)),
                     port
@@ -167,13 +167,13 @@ pub fn register_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }).collect::<Vec<_>>();
                 let to_data = match arg_names.is_empty() {
-                    false => quote! {tcp_share::encode((#(#arg_names),*))?},
+                    false => quote! {tcp_struct::encode((#(#arg_names),*))?},
                     true => quote! {vec![]},
                 };
                 #[cfg(feature = "async-tcp")]
-                let to_data = quote! {Ok(tcp_share::decode(tcp_share::send_data(self.port,&self.head,#name_str,#to_data).await?)?)}.to_string();
+                let to_data = quote! {Ok(tcp_struct::decode(tcp_struct::send_data(self.port,&self.head,#name_str,#to_data).await?)?)}.to_string();
                 #[cfg(not(feature = "async-tcp"))]
-                let to_data = quote! {Ok(tcp_share::decode(tcp_share::send_data(self.port,&self.head,#name_str,#to_data)?)?)}.to_string();
+                let to_data = quote! {Ok(tcp_struct::decode(tcp_struct::send_data(self.port,&self.head,#name_str,#to_data)?)?)}.to_string();
                 let arg_types: Vec<_> = method.sig.inputs
                     .iter()
                     .filter_map(|arg| {
@@ -195,7 +195,7 @@ pub fn register_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 let load = match arg_names.is_empty() {
                     true => quote! {},
-                    false => quote! {let (#(#arg_names),*) = tcp_share::decode::<(#(#arg_types),*)>(data)?;}
+                    false => quote! {let (#(#arg_names),*) = tcp_struct::decode::<(#(#arg_types),*)>(data)?;}
                 };
 
                 let asyncronous = match asyncronous {
@@ -206,7 +206,7 @@ pub fn register_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let body = quote! {
                     #name_str => {
                         #load
-                        tcp_share::encode(#seperator(#(#arg_names),*)#asyncronous)
+                        tcp_struct::encode(#seperator(#(#arg_names),*)#asyncronous)
                     },
                 }.to_string();
 
