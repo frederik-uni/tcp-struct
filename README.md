@@ -36,4 +36,3 @@ let data = MyStruct::read(8082, "struct-version").function1(0);
 ### Issues
 - the `#[register_impl]` needs to be above the `#[derive(TCPShare)]`
 - across files?
-- data is sent as json
