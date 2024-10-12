@@ -13,7 +13,7 @@ pub fn take_str(buffer: &mut &[u8]) -> crate::Result<String> {
         return Err(Error::BufferTooShort);
     }
 
-    let result = String::from_utf8(buffer[4..4 + size].to_vec()).map_err(Error::Utf8Error)?;
+    let result = String::from_utf8(buffer[4..4 + size].to_vec()).map_err(|_| Error::Utf8Error)?;
 
     *buffer = &buffer[4 + size..];
 

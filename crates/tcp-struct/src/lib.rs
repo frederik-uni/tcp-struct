@@ -1,9 +1,14 @@
 mod util;
 
-use std::{future::Future, io, pin::Pin, sync::Arc};
+use std::{
+    future::Future,
+    io::{self},
+    pin::Pin,
+    sync::Arc,
+};
 
 pub use macros::{register_impl, TCPShare};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 #[cfg(not(feature = "async-tcp"))]
 pub use std::net::TcpListener;
 #[cfg(not(feature = "async-tcp"))]
@@ -21,33 +26,47 @@ use tokio::{
 };
 use util::{take_status_code, take_str};
 
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Deserialize, Serialize)]
 pub enum Error {
     #[error("Buffer too short")]
     BufferTooShort,
     #[error("unknown function")]
     FunctionNotFound,
     #[error("failed to convert bytes to string")]
-    Utf8Error(#[from] std::string::FromUtf8Error),
+    Utf8Error,
     #[error("?")]
-    StreamError(#[from] std::io::Error),
+    StreamError(StreamError),
     #[error("todo: remove later")]
     Custom(String),
     #[error("does not match struct")]
     ApiMisMatch(String),
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+pub struct StreamError {
+    pub code: Option<i32>,
+    pub kind: String,
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
+        let kind = err.kind().to_string();
+        let code = err.raw_os_error();
+        Error::StreamError(StreamError { code, kind })
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub fn encode<T: Serialize>(data: T) -> Result<Vec<u8>> {
-    Ok(serde_json::to_vec(&data).unwrap())
+    Ok(bincode::serialize(&data).unwrap())
 }
 
 pub fn decode<'a, T>(v: &'a [u8]) -> Result<T>
 where
     T: serde::de::Deserialize<'a>,
 {
-    Ok(serde_json::from_slice(v).unwrap())
+    Ok(bincode::deserialize(v).unwrap())
 }
 
 #[cfg(feature = "async-tcp")]
@@ -76,7 +95,11 @@ pub async fn send_data(
     if status == 0 {
         Ok(response.to_vec())
     } else {
-        Err(Error::Custom(String::from_utf8(response.to_vec())?))
+        let err: Result<Error> = decode(response);
+        match err {
+            Ok(err) => Err(err),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -102,7 +125,11 @@ pub fn send_data(port: u16, magic_header: &str, func: &str, data: Vec<u8>) -> Re
     if status == 0 {
         Ok(response.to_vec())
     } else {
-        Err(Error::Custom(String::from_utf8(response.to_vec())?))
+        let err: Result<Error> = decode(response);
+        match err {
+            Ok(err) => Err(err),
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -169,7 +196,9 @@ async fn handle_client<T>(
         Err(err) => {
             let mut response_buffer = Vec::new();
             response_buffer.extend_from_slice(&[0, 0, 0, 1]);
-            response_buffer.extend_from_slice(err.to_string().as_bytes());
+            if let Ok(err) = encode(&err) {
+                response_buffer.extend_from_slice(&err);
+            }
             #[cfg(feature = "async-tcp")]
             let _ = stream.write_all(&response_buffer).await;
             #[cfg(not(feature = "async-tcp"))]
@@ -188,7 +217,9 @@ async fn handle_client<T>(
         }
         Err(err) => {
             response_buffer.extend_from_slice(&[0, 0, 0, 1]);
-            response_buffer.extend_from_slice(err.to_string().as_bytes());
+            if let Ok(err) = encode(&err) {
+                response_buffer.extend_from_slice(&err);
+            }
         }
     }
     #[cfg(feature = "async-tcp")]
@@ -206,6 +237,7 @@ pub trait Receiver<T: Send + 'static> {
 
     fn get_app_data(&self) -> Arc<Mutex<T>>;
 
+    #[allow(async_fn_in_trait)]
     async fn start_from_listener(
         &self,
         listener: TcpListener,
