@@ -148,13 +148,13 @@ async fn receive_data(
 
     let mut buffer: &[u8] = &buffer;
     let magic_header_client = take_str(&mut buffer)?;
-    if magic_header_client != magic_header_server {
+    let fn_name = take_str(&mut buffer)?;
+    if magic_header_client != magic_header_server && fn_name.as_str() != "stop" {
         return Err(Error::ApiMisMatch(format!(
             "failed to match magic header, expected: {}, got: {}",
             magic_header_server, magic_header_client
         )));
     }
-    let fn_name = take_str(&mut buffer)?;
     Ok((fn_name, buffer.to_vec()))
 }
 
@@ -303,7 +303,7 @@ pub trait Starter {
         magic_header: &str,
         gen: impl FnOnce() -> T,
     ) -> std::io::Result<()> {
-        let listener = create_listener(port).await.unwrap();
+        let listener = create_listener(port).await?;
         let app_data = gen();
         app_data.start_from_listener(listener, magic_header).await
     }
