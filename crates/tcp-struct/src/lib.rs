@@ -3,17 +3,21 @@ mod util;
 use std::{future::Future, io, pin::Pin, sync::Arc};
 
 pub use macros::{register_impl, TCPShare};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::Serialize;
+#[cfg(not(feature = "async-tcp"))]
+pub use std::net::TcpListener;
 #[cfg(not(feature = "async-tcp"))]
 use std::{
     io::{Read as _, Write as _},
-    net::{TcpListener, TcpStream},
+    net::TcpStream,
 };
+#[cfg(feature = "async-tcp")]
+pub use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Notify};
 #[cfg(feature = "async-tcp")]
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
-    net::{TcpListener, TcpStream},
+    net::TcpStream,
 };
 use util::{take_status_code, take_str};
 
@@ -39,8 +43,11 @@ pub fn encode<T: Serialize>(data: T) -> Result<Vec<u8>> {
     Ok(serde_json::to_vec(&data).unwrap())
 }
 
-pub fn decode<T: DeserializeOwned>(data: Vec<u8>) -> Result<T> {
-    Ok(serde_json::from_slice(&data).unwrap())
+pub fn decode<'a, T>(v: &'a [u8]) -> Result<T>
+where
+    T: serde::de::Deserialize<'a>,
+{
+    Ok(serde_json::from_slice(v).unwrap())
 }
 
 #[cfg(feature = "async-tcp")]
@@ -199,12 +206,11 @@ pub trait Receiver<T: Send + 'static> {
 
     fn get_app_data(&self) -> Arc<Mutex<T>>;
 
-    #[allow(async_fn_in_trait)]
-    async fn start(&self, port: u16, magic_header: &str) -> io::Result<()> {
-        #[cfg(feature = "async-tcp")]
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
-        #[cfg(not(feature = "async-tcp"))]
-        let listener = TcpListener::bind(format!("127.0.0.1:{}", port))?;
+    async fn start_from_listener(
+        &self,
+        listener: TcpListener,
+        magic_header: &str,
+    ) -> io::Result<()> {
         let thread_count = 8;
 
         let futures = Arc::new(Mutex::new(vec![]));
@@ -237,5 +243,36 @@ pub trait Receiver<T: Send + 'static> {
                 notify.notify_one();
             }
         }
+    }
+
+    #[allow(async_fn_in_trait)]
+    async fn start(&self, port: u16, magic_header: &str) -> io::Result<()> {
+        let listener = create_listener(port).await?;
+        self.start_from_listener(listener, magic_header).await
+    }
+}
+
+async fn create_listener(port: u16) -> io::Result<TcpListener> {
+    #[cfg(feature = "async-tcp")]
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    #[cfg(not(feature = "async-tcp"))]
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))?;
+    Ok(listener)
+}
+
+pub trait Starter {
+    #[allow(async_fn_in_trait)]
+    async fn start(self, port: u16, header: &str) -> std::io::Result<()>;
+    #[allow(async_fn_in_trait)]
+    async fn start_from_listener(self, listener: TcpListener, header: &str) -> std::io::Result<()>;
+    #[allow(async_fn_in_trait)]
+    async fn start_gen<T: Starter>(
+        port: u16,
+        magic_header: &str,
+        gen: impl FnOnce() -> T,
+    ) -> std::io::Result<()> {
+        let listener = create_listener(port).await.unwrap();
+        let app_data = gen();
+        app_data.start_from_listener(listener, magic_header).await
     }
 }

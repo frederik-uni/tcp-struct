@@ -84,7 +84,6 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
         }
         pub struct #writer_service_name_str {
             data: std::sync::Arc<tokio::sync::Mutex<#name>>,
-            port: u16
         }
 
         impl tcp_struct::Receiver<#name> for #writer_service_name_str {
@@ -106,19 +105,27 @@ pub fn derive_answer_fn(input: TokenStream) -> proc_macro::TokenStream {
         }
 
         impl #name {
-            pub async fn start(self, port: u16) -> std::io::Result<()> {
-                use tcp_struct::Receiver as _;
-                #writer_service_name_str {
-                    data: std::sync::Arc::new(tokio::sync::Mutex::new(self)),
-                    port
-                }.start(port).await
-            }
-
             pub fn read(port: u16, head: &str) -> #reader_service_name_str {
                 #reader_service_name_str {
                     port,
                     head: head.to_string()
                 }
+            }
+        }
+
+        impl tcp_struct::Starter for #name {
+            async fn start(self, port: u16, header: &str) -> std::io::Result<()> {
+                use tcp_struct::Receiver as _;
+                #writer_service_name_str {
+                    data: std::sync::Arc::new(tokio::sync::Mutex::new(self))
+                }.start(port, header).await
+            }
+
+            async fn start_from_listener(self, listener: tcp_struct::TcpListener, header: &str) -> std::io::Result<()> {
+                use tcp_struct::Receiver as _;
+                #writer_service_name_str {
+                    data: std::sync::Arc::new(tokio::sync::Mutex::new(self))
+                }.start_from_listener(listener, header).await
             }
         }
     };
@@ -171,9 +178,9 @@ pub fn register_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     true => quote! {vec![]},
                 };
                 #[cfg(feature = "async-tcp")]
-                let to_data = quote! {Ok(tcp_struct::decode(tcp_struct::send_data(self.port,&self.head,#name_str,#to_data).await?)?)}.to_string();
+                let to_data = quote! {Ok(tcp_struct::decode(&tcp_struct::send_data(self.port,&self.head,#name_str,#to_data).await?)?)}.to_string();
                 #[cfg(not(feature = "async-tcp"))]
-                let to_data = quote! {Ok(tcp_struct::decode(tcp_struct::send_data(self.port,&self.head,#name_str,#to_data)?)?)}.to_string();
+                let to_data = quote! {Ok(tcp_struct::decode(&tcp_struct::send_data(self.port,&self.head,#name_str,#to_data)?)?)}.to_string();
                 let arg_types: Vec<_> = method.sig.inputs
                     .iter()
                     .filter_map(|arg| {
@@ -195,7 +202,7 @@ pub fn register_impl(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 let load = match arg_names.is_empty() {
                     true => quote! {},
-                    false => quote! {let (#(#arg_names),*) = tcp_struct::decode::<(#(#arg_types),*)>(data)?;}
+                    false => quote! {let (#(#arg_names),*) = tcp_struct::decode::<(#(#arg_types),*)>(&data)?;}
                 };
 
                 let asyncronous = match asyncronous {
