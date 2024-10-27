@@ -7,7 +7,6 @@ use std::{
     sync::Arc,
 };
 
-pub use macros::{register_impl, TCPShare};
 use serde::{Deserialize, Serialize};
 #[cfg(not(feature = "async-tcp"))]
 pub use std::net::TcpListener;
@@ -16,6 +15,7 @@ use std::{
     io::{Read as _, Write as _},
     net::TcpStream,
 };
+pub use tcp_struct_macros::{register_impl, TCPShare};
 #[cfg(feature = "async-tcp")]
 pub use tokio::net::TcpListener;
 use tokio::sync::{Mutex, Notify};

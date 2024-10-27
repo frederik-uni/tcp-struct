@@ -78,16 +78,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 
 [[package]]
-name = "macros"
-version = "0.2.0"
-dependencies = [
- "once_cell",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -213,14 +203,24 @@ dependencies = [
 
 [[package]]
 name = "tcp-struct"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "bincode",
  "log",
- "macros",
  "serde",
+ "tcp-struct-macros",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "tcp-struct-macros"
+version = "0.3.1"
+dependencies = [
+ "once_cell",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
