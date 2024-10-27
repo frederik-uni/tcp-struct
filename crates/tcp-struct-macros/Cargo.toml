@@ -1,6 +1,8 @@
 [package]
 name = "tcp-struct-macros"
 version = "0.3.1"
+description = "Macros for tcp-struct"
+license = "MIT"
 edition = "2021"
 
 [dependencies]
